@@ -21,13 +21,35 @@ class Employee(models.Model):
         null=True
     )
 
+    subunit = models.CharField(
+        max_length=100,
+        null=True
+    )
+
+    location = models.CharField(
+        max_length=100,
+        null=True
+    )
+
+    job_title = models.CharField(
+        max_length=100,
+        null=True
+    )
+
+    employment_status = models.CharField(
+        max_length=100,
+        null=True
+    )
+
+    joined = models.DateField()
+
     strippedname = models.CharField(
         max_length=100,
         null=True
     )
 
     def __str__(self):
-        return '{} {}'.format(self.employee_number, self.lastname)
+        return '{}, {} ({}) '.format(self.lastname, self.firstname, self.employee_number)
 
     def fullname(self):
         return '{} {} {}'.format(self.firstname, self.middlename, self.lastname)
@@ -35,6 +57,7 @@ class Employee(models.Model):
     class Meta:
         app_label = 'hrm'
         unique_together = (('firstname', 'lastname'), )
+        ordering = ('lastname', )
 
 
 class Hrm(models.Model):
@@ -92,6 +115,7 @@ class Hrm(models.Model):
 
     class Meta:
         app_label = 'hrm'
+        ordering = ('employee__lastname', )
 
 
 class Vip(models.Model):
@@ -153,3 +177,4 @@ class Vip(models.Model):
 
     class Meta:
         app_label = 'hrm'
+        ordering = ('employee__lastname', )

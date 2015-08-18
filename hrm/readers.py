@@ -5,9 +5,10 @@ from datetime import date, timedelta
 from decimal import Decimal
 from dateutil.parser import parse
 
-from .models import Hrm, Vip, Employee
 from django.db.utils import IntegrityError
 from django.db import transaction
+
+from .models import Hrm, Vip, Employee
 
 
 class BaseHrm(object):
@@ -48,6 +49,10 @@ class HrmReader(BaseHrm):
         return employee
 
     def load(self):
+        """Loads 'Leave Entitlement and Usage Report' csv export file.
+
+        Calculates a leave days balance, hrm_balance, as of the time of the report.
+        """
         Hrm.objects.all().delete()
         with open(self.filename, encoding=self.encoding, newline='') as f:
             reader = csv.reader(f, delimiter=self.delimiter)
@@ -74,12 +79,13 @@ class HrmReader(BaseHrm):
         return Hrm.objects.all().count()
 
     def hrm_balance(self, hrm):
-        return hrm.entitlements - (hrm.pending_approval + hrm.scheduled or + hrm.taken)
+        return hrm.entitlements - (hrm.pending_approval + hrm.scheduled + hrm.taken)
 
 
 class EmployeeReader(BaseHrm):
 
     def load(self):
+        """Loads employees from the 'Report '"""
         Employee.objects.all().delete()
         with open(self.filename, encoding=self.encoding, newline='') as f:
             reader = csv.reader(f, delimiter=self.delimiter)
@@ -96,6 +102,11 @@ class EmployeeReader(BaseHrm):
                             lastname=lastname,
                             firstname=firstname,
                             middlename=middlename,
+                            subunit=str(values[6]),
+                            location=str(values[7]),
+                            job_title=str(values[3]),
+                            employment_status=str(values[4]),
+                            joined=parse(values[5]),
                             strippedname=strippedname,
                         )
                     except IntegrityError as e:
@@ -113,6 +124,7 @@ class VipReader(object):
         self.period_end = date(year, month + 1, 1) - timedelta(days=1)
 
     def load(self):
+        """Loads a VIP export file of number, name and balance as of YYYY-MM-DD."""
         Vip.objects.all().delete()
         with open(self.filename, encoding=self.encoding, newline='') as f:
             reader = csv.reader(f, delimiter=self.delimiter)
