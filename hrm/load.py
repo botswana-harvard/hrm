@@ -1,26 +1,62 @@
-from .readers import EmployeeReader, HrmReader, VipReader
+import os
+
+from .readers import (
+    EmployeeReader, HrmUsageReportReader, VipMonthlyReader, HrmMonthlyReader, OpeningBalancesReader)
+from hrm.summary import Summarize
+
+PERIODS = [(12, 2014), (1, 2015), (2, 2015), (3, 2015), (4, 2015), (5, 2015), (6, 2015), (7, 2015), (8, 2015)]
+DEFAULT_PATH = '~/source/hrm/data/'
 
 
-def load_employee():
-    csvfile = '~/source/hrm/data/employee.csv'
+def load_employee(path):
+    path = path or DEFAULT_PATH
+    csvfile = os.path.join(path, 'employee.csv')
     reader = EmployeeReader(csvfile)
     return reader.load()
 
 
-def load_hrm():
-    csvfile = '~/source/hrm/data/hrm.csv'
-    hrm_reader = HrmReader(csvfile)
-    return hrm_reader.load()
+def load_hrm_usage(path):
+    path = path or DEFAULT_PATH
+    for m, y in [(8, 2015)]:
+        csvfile = os.path.join(path, 'hrm_usage{0}{1:02d}.csv'.format(y, m))
+        print(csvfile)
+        hrm_reader = HrmUsageReportReader(csvfile, m, y)
+        hrm_reader.load()
 
 
-def load_vip():
-    csvfile = '~/source/hrm/data/vip.csv'
-    reader = VipReader(csvfile, 8, 2015)
-    return reader.load()
+def load_opening_balances(path):
+    path = path or DEFAULT_PATH
+    for m, y in [(8, 2014)]:
+        csvfile = os.path.join(path, 'opening201412.csv')
+        print(csvfile)
+        reader = OpeningBalancesReader(csvfile, m, y)
+        reader.load()
 
 
-def load_all():
-    e = load_employee()
-    h = load_hrm()
-    v = load_vip()
-    print('Employees: {}, Hrm:{}, Vip:{}'.format(e, h, v))
+def load_vip_monthly(path):
+    path = path or DEFAULT_PATH
+    for m, y in PERIODS:
+        csvfile = os.path.join(path, 'vip{0}{1:02d}.csv'.format(y, m))
+        print(csvfile)
+        reader = VipMonthlyReader(csvfile, m, y)
+        reader.load()
+
+
+def load_hrm_monthly(path):
+    path = path or DEFAULT_PATH
+    for m, y in PERIODS:
+        csvfile = os.path.join(path, 'hrm{0}{1:02d}.csv'.format(y, m))
+        print(csvfile)
+        reader = HrmMonthlyReader(csvfile, m, y)
+        reader.load()
+
+
+def load_all(path):
+    e = load_employee(path)
+    o = load_opening_balances(path)
+    h = load_hrm_usage(path)
+    hm = load_hrm_monthly(path)
+    vm = load_vip_monthly(path)
+    summarize = Summarize(path)
+    summarize.monthly()
+    print('Employees: {}, Usage: {}Hrm:{}, Vip:{}'.format(e, h, hm, vm))

@@ -1,10 +1,10 @@
+from decimal import Decimal
 from django.db import models
 
 
 class Employee(models.Model):
 
-    employee_number = models.CharField(
-        max_length=10,
+    employee_number = models.IntegerField(
         unique=True,
     )
 
@@ -43,10 +43,14 @@ class Employee(models.Model):
 
     joined = models.DateField()
 
+    termination_date = models.DateField(null=True)
+
     strippedname = models.CharField(
         max_length=100,
         null=True
     )
+
+    manually_added = models.BooleanField(default=False)
 
     def __str__(self):
         return '{}, {} ({}) '.format(self.lastname, self.firstname, self.employee_number)
@@ -104,21 +108,23 @@ class Hrm(models.Model):
 
     hrm_balance = models.DecimalField(
         max_digits=10,
-        decimal_places=2
+        decimal_places=2,
+        default=Decimal('0.00')
     )
 
     vip_balance = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        null=True
+        default=Decimal('0.00')
     )
 
     class Meta:
         app_label = 'hrm'
         ordering = ('employee__lastname', )
+        verbose_name = 'HRM Usage Report'
 
 
-class Vip(models.Model):
+class BaseMonthly(models.Model):
 
     employee = models.ForeignKey(Employee)
 
@@ -130,9 +136,9 @@ class Vip(models.Model):
         max_length=100
     )
 
-    leave_period_start = models.DateField(null=True)
+    leave_period_start = models.DateField()
 
-    leave_period_end = models.DateField(null=True)
+    leave_period_end = models.DateField()
 
     entitlements = models.DecimalField(
         max_digits=10,
@@ -172,9 +178,86 @@ class Vip(models.Model):
 
     balance = models.DecimalField(
         max_digits=10,
-        decimal_places=2
+        decimal_places=2,
+        default=Decimal(0.00)
+    )
+
+    class Meta:
+        abstract = True
+
+
+class HrmMonthly(BaseMonthly):
+
+    status = models.CharField(max_length=50)
+
+    class Meta:
+        app_label = 'hrm'
+        ordering = ('employee__lastname', )
+        unique_together = ('employee', 'leave_period_start', 'leave_period_end', 'status')
+        verbose_name = 'HRM Monthly Balances'
+
+
+class VipMonthly(BaseMonthly):
+
+    class Meta:
+        app_label = 'hrm'
+        ordering = ('employee__lastname', )
+        verbose_name = 'VIP Monthly Balances'
+
+
+class OpeningBalances(BaseMonthly):
+
+    class Meta:
+        app_label = 'hrm'
+        ordering = ('employee__lastname', )
+        verbose_name = 'Opening Balances'
+
+
+class Balances(models.Model):
+
+    employee = models.ForeignKey(Employee)
+
+    joined = models.DateField()
+
+    termination_date = models.DateField(null=True)
+
+    opening = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal(0.00)
+    )
+
+    accrued = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal(0.00)
+    )
+
+    entitlement = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal(0.00)
+    )
+
+    taken = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal(0.00)
+    )
+
+    balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal(0.00)
+    )
+
+    vip_balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal(0.00)
     )
 
     class Meta:
         app_label = 'hrm'
         ordering = ('employee__lastname', )
+        verbose_name = 'Calculated Balances'
