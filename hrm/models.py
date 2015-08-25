@@ -205,7 +205,17 @@ class VipMonthly(BaseMonthly):
         verbose_name = 'VIP Monthly Balances'
 
 
-class OpeningBalances(BaseMonthly):
+class OpeningBalances(models.Model):
+
+    employee = models.ForeignKey(Employee)
+
+    balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal(0.00)
+    )
+
+    balance_date = models.DateField()
 
     class Meta:
         app_label = 'hrm'

@@ -1,15 +1,17 @@
 import io
-from dateutil.relativedelta import relativedelta
-from datetime import date, timedelta
+import csv
+
+from datetime import date, datetime
 from decimal import Decimal
+from dateutil.parser import parse
 from django.test.testcases import TestCase
 
-from django.core.exceptions import MultipleObjectsReturned
-
-from .models import Hrm, VipMonthly, HrmMonthly, Employee
+from .models import Hrm, VipMonthly, HrmMonthly, Employee, OpeningBalances
 from .readers import HrmUsageReportReader, VipMonthlyReader, HrmMonthlyReader, EmployeeReader
+
 from hrm.summary import Summarize
 from hrm.readers import OpeningBalancesReader
+from dateutil.relativedelta import relativedelta
 
 
 class DummySummarize(Summarize):
@@ -48,6 +50,16 @@ class TestHrm(TestCase):
         '13/8/15, Tony   Kaye,Annual Leave,6,Scheduled(3.0000) ,\n'
     )
 
+    bill_monthly_data = (
+        'Date,Employee Name,Leave Type,Number of Days,Status,Comments\n'
+        '30/1/15,Bill Bruford,Annual Leave,1,Taken(1.0000) ,\n'
+        '25/2/15,Bill Bruford,Annual Leave,4,Taken(4.0000) ,\n'
+        '25/3/15,Bill Bruford,Annual Leave,2.5,Scheduled(1.0000) Taken(1.5000) ,\n'
+        '25/4/15,Bill Bruford,Annual Leave,6,Scheduled(4.0000) Taken(2.0000) ,\n'
+        '25/5/15,Bill Bruford,Annual Leave,1,Taken(1.0000) ,\n'
+        '25/8/15,Bill Bruford,Annual Leave,2,Scheduled(1.0000) Taken(1.0000) ,\n'
+    )
+
     employee_data = (
         '"Employee Id","Employee Last Name","Employee First Name","Job Title","Employment Status","Joined Date","Sub Unit",Location,"Termination Date"\n'
         '573,Moraz,Patrick,"Study Coordinator-Physician",Contract,2011-02-14,"Mpepu Gaborone",MPEPU,\n'
@@ -72,13 +84,21 @@ class TestHrm(TestCase):
 
     def load_openingbalances_from_file_object(self):
         csvfile = io.StringIO(self.opening_balances)
-        reader = OpeningBalancesReader(filename=None, month=8, year=2015, file_object=csvfile)
+        reader = OpeningBalancesReader(
+            filename=None, balance_date=datetime.today() - relativedelta(months=9), file_object=csvfile)
         reader.load()
 
-    def load_hrm_from_file_object(self):
-        csvfile = io.StringIO(self.hrm_monthly_data)
-        reader = HrmMonthlyReader(filename=None, month=8, year=2015, file_object=csvfile)
-        reader.load()
+    def load_hrm_from_file_object(self, data=None):
+        data_rows = data or self.hrm_monthly_data
+        csvfile = io.StringIO(data_rows)
+        reader = csv.reader(csvfile)
+        header_row = next(reader)
+        for row in reader:
+            data = ','.join(header_row) + '\n' + ','.join(row) + '\n'
+            tx_date = parse(row[0], dayfirst=True)
+            csvfile = io.StringIO(data)
+            reader = HrmMonthlyReader(filename=None, month=tx_date.month, year=tx_date.year, file_object=csvfile)
+            reader.load()
 
     def load_vip_from_file_object(self):
         csvfile = io.StringIO(self.vip_monthly_data)
@@ -93,8 +113,10 @@ class TestHrm(TestCase):
     def test_openingbalances_file_object(self):
         self.load_employees_from_file_object()
         csvfile = io.StringIO(self.opening_balances)
-        reader = OpeningBalancesReader(filename=None, month=8, year=2015, file_object=csvfile)
+        reader = OpeningBalancesReader(
+            filename=None, balance_date=datetime.today() - relativedelta(months=9), file_object=csvfile)
         reader.load()
+        self.assertEqual(OpeningBalances.objects.all().count(), 4)
 
     def test_import_hrm_monthly_file_object(self):
         """Asserts HrmMonthlyReader sums balance if more than one record per employee."""
@@ -143,6 +165,7 @@ class TestHrm(TestCase):
                 self.assertEqual(saved_balance, balance, '{} {}!={}'.format(employee, saved_balance, balance))
 
     def test_import_hrm_monthly(self):
+        self.load_employees_from_file()
         self.assertEqual(Employee.objects.all().count(), 375)
         csvfile = '~/source/hrm/data/hrm201508.csv'
         hrm_reader = HrmMonthlyReader(csvfile, 8, 2015)
@@ -154,12 +177,14 @@ class TestHrm(TestCase):
         ).count(), 85)
 
     def test_import_vip_monthly(self):
+        self.load_employees_from_file()
         csvfile = '~/source/hrm/data/vip201508.csv'
         reader = VipMonthlyReader(csvfile, 8, 2015)
         reader.load()
         self.assertEqual(VipMonthly.objects.all().count(), 292)
 
     def test_match_employee(self):
+        self.load_employees_from_file()
         csvfile = '~/source/hrm/data/hrm_usage201508.csv'
         hrm_reader = HrmUsageReportReader(csvfile, 8, 2015)
         hrm_reader.load()
@@ -191,9 +216,13 @@ class TestHrm(TestCase):
 
     def test_balances(self):
         self.load_employees_from_file_object()
+        self.assertEquals(Employee.objects.all().count(), 8)
         self.load_openingbalances_from_file_object()
+        self.assertEquals(OpeningBalances.objects.all().count(), 4)
         self.load_hrm_from_file_object()
+        self.assertEquals(HrmMonthly.objects.all().count(), 5)
         self.load_vip_from_file_object()
+        self.assertEquals(VipMonthly.objects.all().count(), 4)
 
     def test_verify_employee(self):
         self.load_employees_from_file_object()
@@ -202,3 +231,17 @@ class TestHrm(TestCase):
         employee = EmployeeReader(filename=None, file_object=csvfile)
         missing = employee.verify_employees(0, 1)
         self.assertEquals(missing, {'10': 'Erik'})
+
+    def verify_employee_summary_opening_balance(self):
+        self.load_employees_from_file_object()
+        self.load_openingbalances_from_file_object()
+        self.load_hrm_from_file_object(self.bill_monthly_data)
+        employee = Employee.objects.get(lastname='Bruford')
+        opening_balance = OpeningBalances.objects.get(employee=employee)
+        for employee in Employee.objects.filter(pk=employee.pk):
+            summary = Summarize(employee, opening_balance.balance_date + relativedelta(months=9))
+            expected = opening_balance.balance - round(Decimal('16.5'), 2) + round(Decimal(2.08 * 9), 2)
+            self.assertEquals(
+                summary.balance_from_opening,
+                round(expected, 2)
+            )

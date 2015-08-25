@@ -205,10 +205,7 @@ class BaseMonthlyReader(BaseReader):
         super().__init__(filename, delimiter, file_object)
 
     def pre_load(self):
-        self.model.objects.filter(
-            leave_period_start=self.period_start,
-            leave_period_end=self.period_end,
-        ).delete()
+        pass
 
     def load_process(self, f):
         header = None
@@ -246,7 +243,7 @@ class BaseMonthlyReader(BaseReader):
                     leave_period_start=self.period_start,
                     leave_period_end=self.period_end
                 )
-                obj.balance = obj.balance + Decimal(values[self.BALANCE])
+                obj.balance += Decimal(values[self.BALANCE])
                 obj.save()
             except self.model.DoesNotExist:
                 obj = self.model.objects.create(
@@ -272,32 +269,24 @@ class BaseMonthlyReader(BaseReader):
 
 class VipMonthlyReader(BaseMonthlyReader):
 
-    def __init__(self, filename, month, year, delimiter=None, file_object=None):
-        self.opening_balances = {}
-        for obj in OpeningBalances.objects.all():
-            self.opening_balances[str(obj.employee_number)] = Decimal(obj.balance or '0.00')
-        super().__init__(filename, month, year, delimiter, file_object)
-
-    def update_model(self, values):
-        """Updates the model.
-        VIP balance includes accrued (2.08)."""
-        employee = self.employee(values)
-        if employee:
-            try:
-                balance = values[self.BALANCE]
-                values[self.BALANCE] = (
-                    self.opening_balances.get(str(employee.employee_number)) - Decimal(values[self.BALANCE] or '0.00')
-                )
-                values[self.BALANCE] = values[self.BALANCE] - Decimal('2.08')
-                self.opening_balances[str(employee.employee_number)] = balance
-            except TypeError:
-                print(
-                    'No opening balance for {}: {}. Got {}'.format(
-                        employee.employee_number,
-                        employee.lastname,
-                        self.opening_balances.get(str(employee.employee_number)))
-                )
-        return super().update_model(values)
+    pass
+#     def __init__(self, filename, month, year, delimiter=None, file_object=None):
+#         self.opening_balances = {}
+#         for obj in OpeningBalances.objects.all():
+#             self.opening_balances[str(obj.employee.employee_number)] = Decimal(obj.balance or '0.00')
+#         super().__init__(filename, month, year, delimiter, file_object)
+# 
+#     def update_model(self, values):
+#         """Updates the model.
+#         VIP balance includes accrued (2.08)."""
+#         employee = self.employee(values)
+#         if employee:
+#             balance = values[self.BALANCE]
+#             opening_balance = self.opening_balances[str(obj.employee.employee_number)]
+#             values[self.BALANCE] = opening_balance - Decimal(values[self.BALANCE] or '0.00')
+#             values[self.BALANCE] = values[self.BALANCE] - Decimal('2.08')
+#             self.opening_balances[str(employee.employee_number)] = balance
+#         return super().update_model(values)
 
 
 class HrmMonthlyReader(BaseMonthlyReader):
@@ -346,9 +335,20 @@ class OpeningBalancesReader(BaseMonthlyReader):
     JOINED = 3
     BALANCE = 4
 
+    def __init__(self, filename, balance_date, delimiter=None, file_object=None):
+        self.balance_date = balance_date
+        super(BaseMonthlyReader, self).__init__(filename, delimiter, file_object=file_object)
+
     def update_model(self, values):
         """Confirms join date with employee"""
-        obj, employee = super().update_model(values)
+        obj = None
+        employee = self.employee(values)
+        if employee:
+            obj = self.model.objects.create(
+                employee=employee,
+                balance=Decimal(values[self.BALANCE]),
+                balance_date=self.balance_date
+            )
         if parse(values[self.JOINED], dayfirst=True).date() != employee.joined:
             print(
                 'Non-matched joined date from open balance. Expected {}. Got {}.'.format(
@@ -356,6 +356,9 @@ class OpeningBalancesReader(BaseMonthlyReader):
                     employee.joined)
             )
         return obj, employee
+
+    def post_load(self):
+        pass
 
     def employee(self, values):
         try:
