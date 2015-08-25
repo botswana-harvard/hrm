@@ -1,5 +1,7 @@
 import os
 
+from datetime import datetime
+
 from .readers import (
     EmployeeReader, HrmUsageReportReader, VipMonthlyReader, HrmMonthlyReader, OpeningBalancesReader)
 from hrm.summary import Summarize
@@ -26,11 +28,10 @@ def load_hrm_usage(path):
 
 def load_opening_balances(path):
     path = path or DEFAULT_PATH
-    for m, y in [(8, 2014)]:
-        csvfile = os.path.join(path, 'opening201412.csv')
-        print(csvfile)
-        reader = OpeningBalancesReader(csvfile, m, y)
-        reader.load()
+    csvfile = os.path.join(path, 'opening201412.csv')
+    print(csvfile)
+    reader = OpeningBalancesReader(csvfile, datetime.today().date())
+    reader.load()
 
 
 def load_vip_monthly(path):
@@ -42,21 +43,19 @@ def load_vip_monthly(path):
         reader.load()
 
 
-def load_hrm_monthly(path):
-    path = path or DEFAULT_PATH
-    for m, y in PERIODS:
-        csvfile = os.path.join(path, 'hrm{0}{1:02d}.csv'.format(y, m))
-        print(csvfile)
-        reader = HrmMonthlyReader(csvfile, m, y)
-        reader.load()
+def load_hrm_monthly(path, y, m):
+    csvfile = os.path.join(path, 'leave_list{0}{1:02d}.csv'.format(y, m))
+    print(csvfile)
+    reader = HrmMonthlyReader(csvfile)
+    reader.load()
 
 
-def load_all(path):
+def load_all(path, y, m):
     e = load_employee(path)
     o = load_opening_balances(path)
     h = load_hrm_usage(path)
-    hm = load_hrm_monthly(path)
+    hm = load_hrm_monthly(path, y, m)
     vm = load_vip_monthly(path)
-    summarize = Summarize(path)
-    summarize.monthly()
-    print('Employees: {}, Usage: {}Hrm:{}, Vip:{}'.format(e, h, hm, vm))
+    # summarize = Summarize(path)
+    # summarize.monthly()
+    # print('Employees: {}, Usage: {}Hrm:{}, Vip:{}'.format(e, h, hm, vm))

@@ -11,11 +11,12 @@ from django.db import transaction
 
 from .models import Hrm, VipMonthly, HrmMonthly, Employee
 from hrm.models import OpeningBalances
+from django.core.exceptions import MultipleObjectsReturned
 
 
 class BaseReader(object):
 
-    encoding = 'utf-8'
+    encoding = 'latin-1'
     model = None
 
     def __init__(self, filename, delimiter=None, file_object=None):
@@ -192,16 +193,14 @@ class EmployeeReader(BaseReader):
 class BaseMonthlyReader(BaseReader):
     """Loads a VIP export file of number, name and balance as of YYYY-MM-DD."""
 
-    encoding = 'utf-8'
     model = VipMonthly
+    DATE = None
     EMPLOYEE_NUMBER = 0
     EMPLOYEE_NAME = 1
     BALANCE = 2
 
-    def __init__(self, filename, month, year, delimiter=None, file_object=None):
+    def __init__(self, filename, delimiter=None, file_object=None):
         self.delimiter = ','
-        self.period_start = date(year, month, 1)
-        self.period_end = (self.period_start + relativedelta(months=+1)) - timedelta(days=1)
         super().__init__(filename, delimiter, file_object)
 
     def pre_load(self):
@@ -211,6 +210,7 @@ class BaseMonthlyReader(BaseReader):
         header = None
         reader = csv.reader(f, delimiter=self.delimiter)
         for values in reader:
+            # print(values)
             if not header:
                 header = values
             else:
@@ -219,10 +219,7 @@ class BaseMonthlyReader(BaseReader):
                     self.update_hrm_balance(employee, obj)
 
     def post_load(self):
-        return self.model.objects.filter(
-            leave_period_start=self.period_start,
-            leave_period_end=self.period_end,
-        ).count()
+        pass
 
     def employee(self, values):
         try:
@@ -238,10 +235,15 @@ class BaseMonthlyReader(BaseReader):
         employee = self.employee(values)
         if employee:
             try:
+                transaction_date = parse(values[self.DATE], dayfirst=True)
+            except (TypeError, IndexError):
+                transaction_date = self.period_end
+            try:
                 obj = self.model.objects.get(
                     employee=employee,
-                    leave_period_start=self.period_start,
-                    leave_period_end=self.period_end
+                    leave_period_start=transaction_date + relativedelta(day=1),
+                    leave_period_end=transaction_date + relativedelta(day=31),
+                    transaction_date=transaction_date,
                 )
                 obj.balance += Decimal(values[self.BALANCE])
                 obj.save()
@@ -249,9 +251,10 @@ class BaseMonthlyReader(BaseReader):
                 obj = self.model.objects.create(
                     employee=employee,
                     employee_number=employee.employee_number,
+                    transaction_date=transaction_date,
                     fullname=values[self.EMPLOYEE_NAME],
-                    leave_period_start=self.period_start,
-                    leave_period_end=self.period_end,
+                    leave_period_start=transaction_date + relativedelta(day=1),
+                    leave_period_end=transaction_date + relativedelta(day=31),
                     balance=Decimal(values[self.BALANCE]),
                 )
         return obj, employee
@@ -264,36 +267,21 @@ class BaseMonthlyReader(BaseReader):
         except Hrm.DoesNotExist:
             if not employee.termination_date:
                 pass
-                # print('Cannot update balance. Active Employee not found in {}. {}'.format(Hrm._meta.verbose_name, employee))
 
 
 class VipMonthlyReader(BaseMonthlyReader):
 
-    pass
-#     def __init__(self, filename, month, year, delimiter=None, file_object=None):
-#         self.opening_balances = {}
-#         for obj in OpeningBalances.objects.all():
-#             self.opening_balances[str(obj.employee.employee_number)] = Decimal(obj.balance or '0.00')
-#         super().__init__(filename, month, year, delimiter, file_object)
-# 
-#     def update_model(self, values):
-#         """Updates the model.
-#         VIP balance includes accrued (2.08)."""
-#         employee = self.employee(values)
-#         if employee:
-#             balance = values[self.BALANCE]
-#             opening_balance = self.opening_balances[str(obj.employee.employee_number)]
-#             values[self.BALANCE] = opening_balance - Decimal(values[self.BALANCE] or '0.00')
-#             values[self.BALANCE] = values[self.BALANCE] - Decimal('2.08')
-#             self.opening_balances[str(employee.employee_number)] = balance
-#         return super().update_model(values)
+    def __init__(self, filename, month, year, delimiter=None, file_object=None):
+        self.period_start = date(year, month, 1)
+        self.period_end = (self.period_start + relativedelta(months=+1)) - timedelta(days=1)
+        super().__init__(filename, delimiter, file_object)
 
 
 class HrmMonthlyReader(BaseMonthlyReader):
     """Loads a HRM 'Leave List' export file of number, name and balance as of YYYY-MM-DD."""
 
     model = HrmMonthly
-    Date = 0
+    DATE = 0
     EMPLOYEE_NAME = 1
     LEAVETYPE = 2
     BALANCE = 3
@@ -371,4 +359,47 @@ class OpeningBalancesReader(BaseMonthlyReader):
                 joined=parse(values[self.JOINED], dayfirst=True).date(),
                 manually_added=True,
             )
+        return employee
+
+
+class EmployeesFinanceReader:
+    """Loads a HRM 'Leave List' export file of number, name and balance as of YYYY-MM-DD."""
+
+    encoding = 'latin-1'
+    NAME = 1
+
+    def __init__(self, filename):
+        filename = os.path.expanduser(filename)
+        header = None
+        with open(filename, encoding=self.encoding, newline='') as f:
+            all_values = []
+            reader = csv.reader(f, delimiter=',')
+            for values in reader:
+                if not header:
+                    header = values
+                else:
+                    print(values[self.NAME])
+                    all_values.append(values[self.NAME])
+        values = list(set(all_values))
+        for value in values:
+            self.employee([value])
+
+    def employee(self, values):
+        employee = None
+        new_values = values[0].replace('.', ' ').split(' ')
+        new_values = [v for v in new_values if v]
+        lastname = new_values[0]
+        try:
+            first_initial = new_values[1]
+            options = {'lastname': lastname, 'firstname__startswith': first_initial[0]}
+        except IndexError:
+            options = {'lastname': lastname}
+            first_initial = [' ']
+        try:
+            employee = Employee.objects.get(**options)
+        except MultipleObjectsReturned:
+            employees = Employee.objects.filter(**options)
+            print('Employee name {} is ambiguous. Got {}'.format(values[0], [employee for employee in employees]))
+        except Employee.DoesNotExist:
+            print("Employee not found in HRM. Got {} {} {}".format(lastname, first_initial[0], new_values))
         return employee

@@ -136,6 +136,8 @@ class BaseMonthly(models.Model):
         max_length=100
     )
 
+    transaction_date = models.DateField()
+
     leave_period_start = models.DateField()
 
     leave_period_end = models.DateField()
@@ -193,7 +195,7 @@ class HrmMonthly(BaseMonthly):
     class Meta:
         app_label = 'hrm'
         ordering = ('employee__lastname', )
-        unique_together = ('employee', 'leave_period_start', 'leave_period_end', 'status')
+        unique_together = ('employee', 'transaction_date', 'leave_period_start', 'leave_period_end', 'status')
         verbose_name = 'HRM Monthly Balances'
 
 

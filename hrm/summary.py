@@ -21,6 +21,9 @@ class Summarize:
         self.opening_balance = OpeningBalances.objects.get(employee=self.employee)
         self.carry_forward = carry_forward or 0
 
+    def __repr__(self):
+        return '{}({!r}, {!r})'.format(self.__class__.__name__, self.employee, self.reference_date)
+
     @property
     def balance_from_opening(self):
         rdelta = relativedelta(self.opening_balance.balance_date, self.reference_date)
@@ -29,6 +32,13 @@ class Summarize:
             self.opening_balance.balance + accrued -
             self.monthly_taken(self.opening_balance.balance_date, self.reference_date)
         )
+
+    def transactions(self):
+        rdelta = relativedelta(self.opening_balance.balance_date, self.reference_date)
+        for n in range(0, rdelta.months):
+            print(n, self.opening_balance + relativedelta(months=1) + relativedelta(day=1), Decimal('2.08'))
+            for hrm in HrmMonthly.objects.filter(employee=self.employee).order_by('transaction_date'):
+                print(n, hrm.transaction_date, hrm.balance)
 
     @property
     def balance_for_leave_period(self):
@@ -45,6 +55,21 @@ class Summarize:
                 leave_period_end__lte=end_date):
             taken += hrm_monthly.balance or Decimal('0.00')
         return taken
+
+    @classmethod
+    def summarize_all(cls, reference_date, opening_balance_date):
+        summarize_all = {}
+        missing_opening_balance = {}
+        for employee in Employee.objects.all().order_by('employee_number'):
+            try:
+                summary = cls(employee, reference_date)
+            except OpeningBalances.DoesNotExist:
+                summary = (employee, employee.joined.strftime('%Y-%m-%d'))
+                if employee.joined <= opening_balance_date and not employee.termination_date:
+                    missing_opening_balance.update({
+                        employee.employee_number: (employee, employee.joined.strftime('%Y-%m-%d'))})
+            summarize_all.update({employee.employee_number: summary})
+        return summarize_all, missing_opening_balance
 
     def write_summary(self, path):
         self.path = os.path.join(

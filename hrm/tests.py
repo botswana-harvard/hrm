@@ -50,10 +50,11 @@ class TestHrm(TestCase):
         '13/8/15, Tony   Kaye,Annual Leave,6,Scheduled(3.0000) ,\n'
     )
 
-    bill_monthly_data = (
+    bruford_hrm_monthly_data = (
         'Date,Employee Name,Leave Type,Number of Days,Status,Comments\n'
         '30/1/15,Bill Bruford,Annual Leave,1,Taken(1.0000) ,\n'
         '25/2/15,Bill Bruford,Annual Leave,4,Taken(4.0000) ,\n'
+        '17/2/15,Bill Bruford,Annual Leave,2,Taken(2.0000) ,\n'
         '25/3/15,Bill Bruford,Annual Leave,2.5,Scheduled(1.0000) Taken(1.5000) ,\n'
         '25/4/15,Bill Bruford,Annual Leave,6,Scheduled(4.0000) Taken(2.0000) ,\n'
         '25/5/15,Bill Bruford,Annual Leave,1,Taken(1.0000) ,\n'
@@ -95,9 +96,8 @@ class TestHrm(TestCase):
         header_row = next(reader)
         for row in reader:
             data = ','.join(header_row) + '\n' + ','.join(row) + '\n'
-            tx_date = parse(row[0], dayfirst=True)
             csvfile = io.StringIO(data)
-            reader = HrmMonthlyReader(filename=None, month=tx_date.month, year=tx_date.year, file_object=csvfile)
+            reader = HrmMonthlyReader(filename=None, file_object=csvfile)
             reader.load()
 
     def load_vip_from_file_object(self):
@@ -122,9 +122,9 @@ class TestHrm(TestCase):
         """Asserts HrmMonthlyReader sums balance if more than one record per employee."""
         self.load_employees_from_file_object()
         csvfile = io.StringIO(self.hrm_monthly_data)
-        reader = HrmMonthlyReader(filename=None, month=8, year=2015, file_object=csvfile)
+        reader = HrmMonthlyReader(filename=None, file_object=csvfile)
         reader.load()
-        self.assertEqual(HrmMonthly.objects.all().count(), 5)
+        self.assertEqual(HrmMonthly.objects.all().count(), 6)
         expected_values = [('573', Decimal('5.00')),
                            ('153', Decimal('18.00')),
                            ('644', Decimal('4.00')),
@@ -132,8 +132,9 @@ class TestHrm(TestCase):
                            ('785', Decimal('6.00'))]
         for employee_number, balance in expected_values:
             employee = Employee.objects.get(employee_number=employee_number)
-            self.assertEqual(HrmMonthly.objects.filter(employee=employee).count(), 1)
-            saved_balance = HrmMonthly.objects.get(employee=employee).balance
+            saved_balance = Decimal('0.00')
+            for hrm_monthly in HrmMonthly.objects.filter(employee=employee):
+                saved_balance += hrm_monthly.balance
             self.assertEqual(saved_balance, balance, '{} {}!={}'.format(employee, saved_balance, balance))
 
     def test_import_vip_monthly_file_object(self):
@@ -168,13 +169,9 @@ class TestHrm(TestCase):
         self.load_employees_from_file()
         self.assertEqual(Employee.objects.all().count(), 375)
         csvfile = '~/source/hrm/data/hrm201508.csv'
-        hrm_reader = HrmMonthlyReader(csvfile, 8, 2015)
+        hrm_reader = HrmMonthlyReader(csvfile)
         hrm_reader.load()
-        self.assertEqual(HrmMonthly.objects.all().count(), 85)
-        self.assertEqual(HrmMonthly.objects.filter(
-            leave_period_start=date(2015, 8, 1),
-            leave_period_end=date(2015, 8, 31),
-        ).count(), 85)
+        self.assertEqual(HrmMonthly.objects.all().count(), 98)
 
     def test_import_vip_monthly(self):
         self.load_employees_from_file()
@@ -208,7 +205,7 @@ class TestHrm(TestCase):
     def test_summary_balance(self):
         self.load_employees_from_file_object()
         csvfile = io.StringIO(self.hrm_monthly_data)
-        reader = HrmMonthlyReader(filename=None, month=8, year=2015, file_object=csvfile)
+        reader = HrmMonthlyReader(filename=None, file_object=csvfile)
         reader.load()
         csvfile = io.StringIO(self.vip_monthly_data)
         reader = VipMonthlyReader(filename=None, month=8, year=2015, file_object=csvfile)
@@ -220,7 +217,7 @@ class TestHrm(TestCase):
         self.load_openingbalances_from_file_object()
         self.assertEquals(OpeningBalances.objects.all().count(), 4)
         self.load_hrm_from_file_object()
-        self.assertEquals(HrmMonthly.objects.all().count(), 5)
+        self.assertEquals(HrmMonthly.objects.all().count(), 6)
         self.load_vip_from_file_object()
         self.assertEquals(VipMonthly.objects.all().count(), 4)
 
@@ -235,12 +232,12 @@ class TestHrm(TestCase):
     def verify_employee_summary_opening_balance(self):
         self.load_employees_from_file_object()
         self.load_openingbalances_from_file_object()
-        self.load_hrm_from_file_object(self.bill_monthly_data)
+        self.load_hrm_from_file_object(self.bruford_hrm_monthly_data)
         employee = Employee.objects.get(lastname='Bruford')
         opening_balance = OpeningBalances.objects.get(employee=employee)
         for employee in Employee.objects.filter(pk=employee.pk):
             summary = Summarize(employee, opening_balance.balance_date + relativedelta(months=9))
-            expected = opening_balance.balance - round(Decimal('16.5'), 2) + round(Decimal(2.08 * 9), 2)
+            expected = opening_balance.balance - round(Decimal('18.5'), 2) + round(Decimal(2.08 * 9), 2)
             self.assertEquals(
                 summary.balance_from_opening,
                 round(expected, 2)
