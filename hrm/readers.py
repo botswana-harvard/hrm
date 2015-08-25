@@ -363,10 +363,12 @@ class OpeningBalancesReader(BaseMonthlyReader):
 
 
 class EmployeesFinanceReader:
-    """Loads a HRM 'Leave List' export file of number, name and balance as of YYYY-MM-DD."""
+    """Loads names and checks them against HRM from a raw file used to
+    transfer data from payroll to accounts.
+
+    Ideally all names should point to an Employee in HRM."""
 
     encoding = 'latin-1'
-    NAME = 1
 
     def __init__(self, filename):
         filename = os.path.expanduser(filename)
@@ -378,19 +380,18 @@ class EmployeesFinanceReader:
                 if not header:
                     header = values
                 else:
-                    print(values[self.NAME])
                     all_values.append(values[self.NAME])
         values = list(set(all_values))
         for value in values:
             self.employee([value])
 
-    def employee(self, values):
+    def employee(self, name):
         employee = None
-        new_values = values[0].replace('.', ' ').split(' ')
-        new_values = [v for v in new_values if v]
-        lastname = new_values[0]
+        name_as_list = name.replace('.', ' ').split(' ')
+        name_as_list = [v for v in name_as_list if v]
+        lastname = name_as_list[0]
         try:
-            first_initial = new_values[1]
+            first_initial = name_as_list[1]
             options = {'lastname': lastname, 'firstname__startswith': first_initial[0]}
         except IndexError:
             options = {'lastname': lastname}
@@ -399,7 +400,7 @@ class EmployeesFinanceReader:
             employee = Employee.objects.get(**options)
         except MultipleObjectsReturned:
             employees = Employee.objects.filter(**options)
-            print('Employee name {} is ambiguous. Got {}'.format(values[0], [employee for employee in employees]))
+            print('Employee name {} is ambiguous. Got {}'.format(name, [employee for employee in employees]))
         except Employee.DoesNotExist:
-            print("Employee not found in HRM. Got {} {} {}".format(lastname, first_initial[0], new_values))
+            print("Employee not found in HRM. Got {} {} {}".format(lastname, first_initial[0], name_as_list))
         return employee
