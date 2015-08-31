@@ -7,10 +7,10 @@ from .readers import (
 from hrm.summary import Summarize
 
 PERIODS = [(12, 2014), (1, 2015), (2, 2015), (3, 2015), (4, 2015), (5, 2015), (6, 2015), (7, 2015), (8, 2015)]
-DEFAULT_PATH = '~/source/hrm/data/'
+DEFAULT_PATH = '~/Downloads/leave/'
 
 
-def load_employee(path):
+def load_employee(path=None):
     path = path or DEFAULT_PATH
     csvfile = os.path.join(path, 'employee.csv')
     reader = EmployeeReader(csvfile)
@@ -34,7 +34,7 @@ def load_opening_balances(path):
     reader.load()
 
 
-def load_vip_monthly(path):
+def load_vip_monthly(path=None):
     path = path or DEFAULT_PATH
     for m, y in PERIODS:
         csvfile = os.path.join(path, 'vip{0}{1:02d}.csv'.format(y, m))

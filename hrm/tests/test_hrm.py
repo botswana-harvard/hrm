@@ -1,17 +1,18 @@
 import io
 import csv
 
+from collections import OrderedDict
 from datetime import date, datetime
 from decimal import Decimal
 from dateutil.parser import parse
+from dateutil.relativedelta import relativedelta
 from django.test.testcases import TestCase
 
-from .models import Hrm, VipMonthly, HrmMonthly, Employee, OpeningBalances
-from .readers import HrmUsageReportReader, VipMonthlyReader, HrmMonthlyReader, EmployeeReader
-
+from hrm.models import Hrm, VipMonthly, HrmMonthly, Employee, OpeningBalances
+from hrm.readers import HrmUsageReportReader, VipMonthlyReader, HrmMonthlyReader, EmployeeReader
 from hrm.summary import Summarize
 from hrm.readers import OpeningBalancesReader
-from dateutil.relativedelta import relativedelta
+from hrm.reports import Employees
 
 
 class DummySummarize(Summarize):
@@ -242,3 +243,61 @@ class TestHrm(TestCase):
                 summary.balance_from_opening,
                 round(expected, 2)
             )
+
+    def test_employee_joined_per_month(self):
+        """Asserts correct counts."""
+        self.load_employees_from_file()
+        employees = Employees(datetime(1900, 1, 1), date(2014, 11, 30), load=True)
+        self.assertEqual(Employee.objects.all().count(), employees.total)
+        counts = [x[1] for x in employees.joined]
+        self.assertEqual(employees.total, sum(counts))
+        print('joined', counts, sum(counts))
+
+    def test_employee_terminated_per_month(self):
+        """Asserts correct counts."""
+        self.load_employees_from_file()
+        employees = Employees(datetime(1900, 1, 1), date(2014, 11, 30), load=True)
+        counts = [x[1] for x in employees.terminated]
+        print('terminated', counts, sum(counts))
+        self.assertEqual(Employee.objects.filter(termination_date__isnull=False).count(), sum(counts))
+
+    def test_employee_joined(self):
+        """Asserts correct list of dates is created."""
+        employees = Employees(datetime(1900, 1, 1), date(2014, 11, 30), load=True)
+        joined_dates = [(x[0], 0) for x in employees.joined]
+        self.assertEqual(
+            joined_dates,
+            [(date(2014, 11, 1), 0), (date(2014, 12, 1), 0), (date(2015, 1, 1), 0), (date(2015, 2, 1), 0), (date(2015, 3, 1), 0),
+             (date(2015, 4, 1), 0), (date(2015, 5, 1), 0), (date(2015, 6, 1), 0), (date(2015, 7, 1), 0),
+             (date(2015, 8, 1), 0)]
+        )
+
+    def test_active_employees(self):
+        end_date = date(2014, 11, 30)
+        employees = Employees(datetime(1900, 1, 1), date(2014, 11, 30), load=True)
+        for n in [0, 1, 1, 1, 1, 1, 1, 1, 1, 1]:
+            end_date = end_date + relativedelta(months=n) + relativedelta(day=31)
+            print(end_date, employees.active_employees(end_date).count())
+
+    def test_active_employees_in_vip(self):
+        end_date = date(2014, 11, 30)
+        employees = Employees(datetime(1900, 1, 1), date(2014, 11, 30), load=True)
+        for n in [0, 1, 1, 1, 1, 1, 1, 1, 1, 1]:
+            end_date = end_date + relativedelta(months=n) + relativedelta(day=31)
+            print(
+                end_date, employees.active_employees(end_date).count(),
+                employees.active_employees_in_vip(end_date).count())
+#             self.assertEqual(
+#                 employees.active_employees(end_date).count(),
+#                 employees.active_employees_in_vip(end_date).count())
+
+    def test_employee_current_leave_period(self):
+        end_date = date(2014, 11, 30)
+        employees = Employees(datetime(1900, 1, 1), date(2014, 11, 30), load=True)
+        for n in [0, 1, 1, 1, 1, 1, 1, 1, 1, 1]:
+            end_date = end_date + relativedelta(months=n) + relativedelta(day=31)
+            for employee in employees.active_employees(end_date):
+                period_start, period_end = employee.leave_period
+                print(end_date.strftime('%Y-%m-%d'), employee.employee_number, employee.lastname,
+                      period_start.strftime('%Y-%m-%d'),
+                      period_end.strftime('%Y-%m-%d'))

@@ -1,5 +1,7 @@
+from datetime import date
 from decimal import Decimal
 from django.db import models
+from dateutil.relativedelta import relativedelta
 
 
 class Employee(models.Model):
@@ -57,6 +59,12 @@ class Employee(models.Model):
 
     def fullname(self):
         return '{} {} {}'.format(self.firstname, self.middlename, self.lastname)
+
+    @property
+    def leave_period(self):
+        start_date = date(date.today().year, self.joined.month, 1)
+        end_date = self.joined + relativedelta(months=-1) + relativedelta(day=1)
+        return start_date, end_date
 
     class Meta:
         app_label = 'hrm'
